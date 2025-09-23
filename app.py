@@ -1,120 +1,61 @@
-import streamlit as st
-from docx import Document
-from docx.shared import Inches, Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from PIL import Image
-import os
-import datetime
+# ========================
+# CONTRAPARTIDAS
+# ========================
+if "contrapartidas" not in st.session_state:
+    st.session_state.contrapartidas = []
+if "edit_index" not in st.session_state:
+    st.session_state.edit_index = None
 
-st.set_page_config(page_title="Gerador de Relatórios", layout="centered")
+st.subheader("➕ Adicionar Contrapartida")
 
-st.title("📑 Gerador de Relatórios Automático")
+# Campos para adicionar nova contrapartida
+col1, col2 = st.columns([2, 1])
+with col1:
+    nova_desc = st.text_input("Descrição da Contrapartida", key="desc_contrapartida")
+with col2:
+    nova_status = st.selectbox("Comprovada?", ["Sim", "Não"], key="status_contrapartida")
 
-# Formulário de entrada
-nome_projeto = st.text_input("Nome do Projeto")
-nome_sindicato = st.text_input("Nome do Sindicato")
-cidade = st.text_input("Cidade")
-data = st.date_input("Data", datetime.date.today())
+if st.button("Adicionar Contrapartida"):
+    if nova_desc:
+        st.session_state.contrapartidas.append({
+            "descricao": nova_desc,
+            "status": nova_status
+        })
+        st.success(f"Contrapartida adicionada: {nova_desc} ({nova_status})")
+        st.session_state.desc_contrapartida = ""  # limpar campo
 
-# Upload de múltiplas imagens
-imagens = st.file_uploader(
-    "Selecione imagens para inserir no relatório",
-    type=["jpg", "jpeg", "png", "bmp", "gif"],
-    accept_multiple_files=True
-)
+# Mostrar contrapartidas já adicionadas
+if st.session_state.contrapartidas:
+    st.write("📋 Contrapartidas adicionadas:")
 
-if st.button("Gerar Relatório"):
-    if not (nome_projeto and nome_sindicato and cidade and data):
-        st.error("⚠️ Por favor, preencha todos os campos obrigatórios!")
-    else:
-        try:
-            # Carregar o modelo
-            doc = Document("Modelo.docx")
+    for i, c in enumerate(st.session_state.contrapartidas):
+        col1, col2, col3 = st.columns([3, 1, 1])
+        with col1:
+            st.write(f"{i+1}. {c['descricao']} - {c['status']}")
 
-            # Normalizar os textos
-            nome_projeto_fmt = nome_projeto.upper()
-            nome_sindicato_fmt = nome_sindicato.upper()
-            cidade_fmt = cidade.capitalize()
-            data_fmt = data.strftime("%d/%m/%Y")
+        with col2:
+            if st.button(f"✏️ Editar {i}", key=f"edit_{i}"):
+                st.session_state.edit_index = i
 
-            substituicoes = {
-                "(TEXTO_NOMEPROJETO)": nome_projeto_fmt,
-                "(TEXTO_NOMESINDICATO)": nome_sindicato_fmt,
-                "(CIDADE)": cidade_fmt,
-                "(DATA)": data_fmt
-            }
+        with col3:
+            if st.button(f"🗑 Remover {i}", key=f"del_{i}"):
+                st.session_state.contrapartidas.pop(i)
+                st.experimental_rerun()
 
-            # Substituir texto nos parágrafos e tabelas
-            def substituir(doc, antigo, novo):
-                for p in doc.paragraphs:
-                    if antigo in p.text:
-                        for run in p.runs:
-                            run.text = run.text.replace(antigo, novo)
-                for table in doc.tables:
-                    for row in table.rows:
-                        for cell in row.cells:
-                            for p in cell.paragraphs:
-                                if antigo in p.text:
-                                    for run in p.runs:
-                                        run.text = run.text.replace(antigo, novo)
-
-            for k, v in substituicoes.items():
-                substituir(doc, k, v)
-
-            # Inserir imagens no marcador
-            for i, paragraph in enumerate(doc.paragraphs):
-                if "(FOTOS_ORGANIZADAS)" in paragraph.text:
-                    p = paragraph._element
-                    p.getparent().remove(p)
-
-                    if imagens:
-                        for idx, img in enumerate(imagens, 1):
-                            # Compactar e salvar imagem temporária
-                            with Image.open(img) as im:
-                                im = im.convert("RGB")  # garantir compatibilidade
-                                max_width = 1600
-                                if im.width > max_width:
-                                    ratio = max_width / im.width
-                                    new_size = (max_width, int(im.height * ratio))
-                                    im = im.resize(new_size, Image.LANCZOS)
-                                temp_path = f"temp_{idx}.jpg"
-                                im.save(temp_path, "JPEG", optimize=True, quality=70)
-
-                            # Quebra de página antes da foto (menos a primeira)
-                            if idx > 1:
-                                doc.add_page_break()
-
-                            # Foto alinhada à esquerda
-                            p_img = doc.add_paragraph()
-                            p_img.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                            run_img = p_img.add_run()
-                            run_img.add_picture(temp_path, width=Inches(6))
-
-                            # Legenda alinhada à esquerda
-                            legenda = os.path.splitext(os.path.basename(img.name))[0]
-                            p_legenda = doc.add_paragraph()
-                            p_legenda.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                            run_legenda = p_legenda.add_run(f"Foto {idx}: {legenda}")
-                            run_legenda.font.name = "Calibri"
-                            run_legenda.font.size = Pt(10)
-                            run_legenda.bold = True
-
-                            # Apagar imagem temporária
-                            os.remove(temp_path)
-                    break
-
-            # Salvar arquivo final
-            output_path = "Relatorio_Gerado.docx"
-            doc.save(output_path)
-
-            with open(output_path, "rb") as f:
-                st.success("✅ Relatório gerado com sucesso!")
-                st.download_button(
-                    "⬇️ Baixar Relatório",
-                    f,
-                    file_name="Relatorio_Gerado.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-
-        except Exception as e:
-            st.error(f"❌ Erro ao gerar relatório: {e}")
+    # Se estiver em modo de edição
+    if st.session_state.edit_index is not None:
+        idx = st.session_state.edit_index
+        st.info(f"✏️ Editando contrapartida {idx+1}")
+        edit_desc = st.text_input("Nova descrição", value=st.session_state.contrapartidas[idx]["descricao"], key="edit_desc")
+        edit_status = st.selectbox("Comprovada?", ["Sim", "Não"], index=0 if st.session_state.contrapartidas[idx]["status"]=="Sim" else 1, key="edit_status")
+        
+        colA, colB = st.columns(2)
+        with colA:
+            if st.button("💾 Salvar Alterações"):
+                st.session_state.contrapartidas[idx] = {"descricao": edit_desc, "status": edit_status}
+                st.session_state.edit_index = None
+                st.experimental_rerun()
+        with colB:
+            if st.button("❌ Cancelar Edição"):
+                st.session_state.edit_index = None
+                st.experimental_rerun()
