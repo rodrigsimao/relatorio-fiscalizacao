@@ -148,46 +148,43 @@ if st.button("Gerar Relatório"):
                 substituir(doc, k, v)
 
             # ========================
-            # CONTRAPARTIDAS NA TABELA (VERSÃO CORRIGIDA)
+            # CONTRAPARTIDAS NA TABELA (VERSÃO CORRIGIDA - PRIMEIRA OPÇÃO)
             # ========================
             if len(st.session_state.contrapartidas) > 0:
                 for table in doc.tables:
                     for row_idx, row in enumerate(table.rows):
-                        row_text = ' '.join([cell.text for cell in row.cells])
-                        
                         # Verificar se esta linha contém marcadores de contrapartida
                         for idx, c in enumerate(st.session_state.contrapartidas, start=1):
                             marcador = f"(contrapartida{idx:02d})"
+                            encontrou_marcador = False
                             
-                            if marcador in row_text:
-                                # Encontrar e substituir a descrição
+                            # Primeiro: encontrar e substituir a descrição
+                            for cell in row.cells:
+                                for p in cell.paragraphs:
+                                    for run in p.runs:
+                                        if marcador in run.text:
+                                            run.text = run.text.replace(marcador, c["descricao"])
+                                            encontrou_marcador = True
+                            
+                            # Segundo: se encontrou o marcador, processar SIM/NÃO em TODAS as células da linha
+                            if encontrou_marcador:
                                 for cell in row.cells:
                                     for p in cell.paragraphs:
                                         for run in p.runs:
-                                            if marcador in run.text:
-                                                run.text = run.text.replace(marcador, c["descricao"])
-                                
-                                # Substituir checkboxes - abordagem mais específica
-                                for cell_idx, cell in enumerate(row.cells):
-                                    cell_text = cell.text
-                                    
-                                    # Se for célula da coluna SIM (normalmente 3ª coluna)
-                                    if "(XSIM)" in cell_text:
-                                        for p in cell.paragraphs:
-                                            for run in p.runs:
+                                            # Limpar TODOS os marcadores de checkbox
+                                            if "(XSIM)" in run.text or "(XNAO)" in run.text:
                                                 if c["status"] == "Sim":
-                                                    run.text = run.text.replace("(XSIM)", "SIM").replace("(XNAO)", "")
+                                                    # Se for SIM, coloca "SIM" e remove "(XNAO)"
+                                                    if "(XSIM)" in run.text:
+                                                        run.text = run.text.replace("(XSIM)", "SIM")
+                                                    if "(XNAO)" in run.text:
+                                                        run.text = run.text.replace("(XNAO)", "")
                                                 else:
-                                                    run.text = run.text.replace("(XSIM)", "").replace("(XNAO)", "NÃO")
-                                    
-                                    # Se for célula da coluna NÃO (normalmente 4ª coluna)  
-                                    if "(XNAO)" in cell_text:
-                                        for p in cell.paragraphs:
-                                            for run in p.runs:
-                                                if c["status"] == "Não":
-                                                    run.text = run.text.replace("(XNAO)", "NÃO").replace("(XSIM)", "")
-                                                else:
-                                                    run.text = run.text.replace("(XNAO)", "").replace("(XSIM)", "SIM")
+                                                    # Se for NÃO, coloca "NÃO" e remove "(XSIM)"
+                                                    if "(XNAO)" in run.text:
+                                                        run.text = run.text.replace("(XNAO)", "NÃO")
+                                                    if "(XSIM)" in run.text:
+                                                        run.text = run.text.replace("(XSIM)", "")
 
                 # Se houver extras, duplicar última linha
                 max_default = 3
@@ -213,9 +210,15 @@ if st.button("Gerar Relatório"):
                                         for run in p.runs:
                                             if "(XSIM)" in run.text or "(XNAO)" in run.text:
                                                 if c["status"] == "Sim":
-                                                    run.text = run.text.replace("(XSIM)", "SIM").replace("(XNAO)", "")
+                                                    if "(XSIM)" in run.text:
+                                                        run.text = run.text.replace("(XSIM)", "SIM")
+                                                    if "(XNAO)" in run.text:
+                                                        run.text = run.text.replace("(XNAO)", "")
                                                 else:
-                                                    run.text = run.text.replace("(XNAO)", "NÃO").replace("(XSIM)", "")
+                                                    if "(XNAO)" in run.text:
+                                                        run.text = run.text.replace("(XNAO)", "NÃO")
+                                                    if "(XSIM)" in run.text:
+                                                        run.text = run.text.replace("(XSIM)", "")
                             break
 
             # ========================
