@@ -71,18 +71,24 @@ if st.button("Gerar Relatório"):
                             with open(img.name, "wb") as f:
                                 f.write(img.getbuffer())
 
+                            # Imagem centralizada ocupando quase a página
                             p_img = doc.add_paragraph()
-                            p_img.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                            p_img.alignment = WD_ALIGN_PARAGRAPH.CENTER
                             run_img = p_img.add_run()
-                            run_img.add_picture(img.name, width=Inches(3.5))
+                            run_img.add_picture(img.name, width=Inches(6.5))
 
+                            # Legenda centralizada
                             legenda = os.path.splitext(os.path.basename(img.name))[0]
                             p_legenda = doc.add_paragraph()
-                            p_legenda.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                            p_legenda.alignment = WD_ALIGN_PARAGRAPH.CENTER
                             run_legenda = p_legenda.add_run(f"Foto {idx}: {legenda}")
                             run_legenda.font.name = "Calibri"
                             run_legenda.font.size = Pt(10)
                             run_legenda.bold = True
+
+                            # Quebra de página, exceto na última imagem
+                            if idx < len(imagens):
+                                doc.add_page_break()
                     break
 
             # Salvar arquivo temporário
