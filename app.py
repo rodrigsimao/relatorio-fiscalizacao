@@ -45,7 +45,7 @@ if st.button("Adicionar Contrapartida"):
             "status": nova_status
         })
         st.success(f"Contrapartida adicionada: {nova_desc} ({nova_status})")
-        st.experimental_rerun()   # 🔄 reinicia app para limpar campo
+        st.rerun()   # 🔄 reinicia app para limpar campo
 
 # Listagem das contrapartidas
 if st.session_state.contrapartidas:
@@ -57,11 +57,11 @@ if st.session_state.contrapartidas:
         with colB:
             if st.button("✏️ Editar", key=f"edit_{i}"):
                 st.session_state.edit_index = i
-                st.experimental_rerun()
+                st.rerun()
         with colC:
             if st.button("🗑 Remover", key=f"del_{i}"):
                 st.session_state.contrapartidas.pop(i)
-                st.experimental_rerun()
+                st.rerun()
 
     # Modo edição
     if st.session_state.edit_index is not None:
@@ -85,11 +85,11 @@ if st.session_state.contrapartidas:
                         "status": edit_status
                     }
                     st.session_state.edit_index = None
-                    st.experimental_rerun()
+                    st.rerun()
             with colCancel:
                 if st.button("❌ Cancelar Edição"):
                     st.session_state.edit_index = None
-                    st.experimental_rerun()
+                    st.rerun()
         else:
             st.session_state.edit_index = None
 
