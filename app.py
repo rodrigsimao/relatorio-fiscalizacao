@@ -1,50 +1,102 @@
 import streamlit as st
-import io
-from pypdf import PdfReader, PdfWriter
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
+from docx import Document
+from docx.shared import Inches, Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+import os
+import datetime
 
-st.title("📋 Teste - Preencher PDF Modelo")
+st.set_page_config(page_title="Gerador de Relatórios", layout="centered")
 
-# --- Campos de teste ---
-patrocinado = st.text_input("Patrocinado")
-numero_contrato = st.text_input("Nº do Contrato")
-nome_evento = st.text_input("Nome do Evento")
-municipio = st.text_input("Município de Realização")
+st.title("📑 Gerador de Relatórios Automático")
 
-# --- Upload do PDF modelo ---
-modelo_pdf = st.file_uploader("Carregue o PDF modelo", type=["pdf"])
+# Formulário de entrada
+nome_projeto = st.text_input("Nome do Projeto")
+nome_sindicato = st.text_input("Nome do Sindicato")
+cidade = st.text_input("Cidade")
+data = st.date_input("Data", datetime.date.today())
 
-if st.button("Gerar Relatório") and modelo_pdf:
-    # Criar overlay (camada transparente com textos)
-    packet = io.BytesIO()
-    can = canvas.Canvas(packet, pagesize=A4)
-    can.setFont("Helvetica", 11)
+# Upload de múltiplas imagens
+imagens = st.file_uploader(
+    "Selecione imagens para inserir no relatório",
+    type=["jpg", "jpeg", "png", "bmp", "gif"],
+    accept_multiple_files=True
+)
 
-    # ⚠️ OBS: essas coordenadas são apenas exemplo!
-    # Precisamos ajustar testando até os textos ficarem nas posições certas
-    can.drawString(30*mm, 250*mm, f"Patrocinado: {patrocinado}")
-    can.drawString(30*mm, 240*mm, f"Nº do Contrato: {numero_contrato}")
-    can.drawString(30*mm, 230*mm, f"Nome do Evento: {nome_evento}")
-    can.drawString(30*mm, 220*mm, f"Município: {municipio}")
+if st.button("Gerar Relatório"):
+    if not (nome_projeto and nome_sindicato and cidade and data):
+        st.error("⚠️ Por favor, preencha todos os campos obrigatórios!")
+    else:
+        try:
+            # Carregar o modelo
+            doc = Document("Modelo.docx")
 
-    can.save()
-    packet.seek(0)
+            # Normalizar os textos
+            nome_projeto_fmt = nome_projeto.upper()
+            nome_sindicato_fmt = nome_sindicato.upper()
+            cidade_fmt = cidade.capitalize()
+            data_fmt = data.strftime("%d/%m/%Y")
 
-    # Juntar overlay com o PDF original
-    overlay_pdf = PdfReader(packet)
-    original_pdf = PdfReader(modelo_pdf)
-    writer = PdfWriter()
+            substituicoes = {
+                "(TEXTO_NOMEPROJETO)": nome_projeto_fmt,
+                "(TEXTO_NOMESINDICATO)": nome_sindicato_fmt,
+                "(CIDADE)": cidade_fmt,
+                "(DATA)": data_fmt
+            }
 
-    for i, page in enumerate(original_pdf.pages):
-        if i == 0:  # só aplicar overlay na primeira página
-            page.merge_page(overlay_pdf.pages[0])
-        writer.add_page(page)
+            # Substituir texto nos parágrafos e tabelas
+            def substituir(doc, antigo, novo):
+                for p in doc.paragraphs:
+                    if antigo in p.text:
+                        for run in p.runs:
+                            run.text = run.text.replace(antigo, novo)
+                for table in doc.tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            for p in cell.paragraphs:
+                                if antigo in p.text:
+                                    for run in p.runs:
+                                        run.text = run.text.replace(antigo, novo)
 
-    # Exportar resultado
-    output = io.BytesIO()
-    writer.write(output)
+            for k, v in substituicoes.items():
+                substituir(doc, k, v)
 
-    st.success("✅ PDF gerado com sucesso!")
-    st.download_button("⬇️ Baixar PDF", output.getvalue(), "relatorio_teste.pdf", "application/pdf")
+            # Inserir imagens no marcador
+            for i, paragraph in enumerate(doc.paragraphs):
+                if "(FOTOS_ORGANIZADAS)" in paragraph.text:
+                    p = paragraph._element
+                    p.getparent().remove(p)
+
+                    if imagens:
+                        for idx, img in enumerate(imagens, 1):
+                            with open(img.name, "wb") as f:
+                                f.write(img.getbuffer())
+
+                            p_img = doc.add_paragraph()
+                            p_img.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                            run_img = p_img.add_run()
+                            run_img.add_picture(img.name, width=Inches(3.5))
+
+                            legenda = os.path.splitext(os.path.basename(img.name))[0]
+                            p_legenda = doc.add_paragraph()
+                            p_legenda.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                            run_legenda = p_legenda.add_run(f"Foto {idx}: {legenda}")
+                            run_legenda.font.name = "Calibri"
+                            run_legenda.font.size = Pt(10)
+                            run_legenda.bold = True
+                    break
+
+            # Salvar arquivo temporário
+            output_path = "Relatorio_Gerado.docx"
+            doc.save(output_path)
+
+            with open(output_path, "rb") as f:
+                st.success("✅ Relatório gerado com sucesso!")
+                st.download_button(
+                    "⬇️ Baixar Relatório",
+                    f,
+                    file_name="Relatorio_Gerado.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+
+        except Exception as e:
+            st.error(f"❌ Erro ao gerar relatório: {e}")
