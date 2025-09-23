@@ -1,4 +1,3 @@
-# app.py (corrigido: compatibilidade session_state + gestão completa das contrapartidas)
 import streamlit as st
 from docx import Document
 from docx.shared import Inches, Pt
@@ -11,17 +10,13 @@ import copy
 # ---------------------------
 # Compatibilidade session_state
 # ---------------------------
-# Em versões muito antigas do Streamlit 'session_state' pode não existir.
-# Fazemos um fallback seguro para evitar o erro que você mostrou.
 if not hasattr(st, "session_state") or st.session_state is None:
     class _SimpleSession(dict):
-        def __getattr__(self, name):
-            return self.get(name)
-        def __setattr__(self, name, value):
-            self[name] = value
+        def __getattr__(self, name): return self.get(name)
+        def __setattr__(self, name, value): self[name] = value
     st.session_state = _SimpleSession()
 
-# Inicializações seguras das chaves usadas
+# Inicializações seguras
 if "contrapartidas" not in st.session_state:
     st.session_state["contrapartidas"] = []
 if "edit_index" not in st.session_state:
@@ -42,7 +37,7 @@ cidade = st.text_input("Cidade")
 data = st.date_input("Data", datetime.date.today())
 
 # ========================
-# CONTRAPARTIDAS (adicionar / listar / editar / remover)
+# CONTRAPARTIDAS
 # ========================
 st.subheader("➕ Adicionar Contrapartida")
 
@@ -59,10 +54,9 @@ if st.button("Adicionar Contrapartida"):
             "status": nova_status
         })
         st.success(f"Contrapartida adicionada: {nova_desc} ({nova_status})")
-        # limpar campo de input
-        st.session_state["desc_contrapartida"] = ""
+        st.session_state["desc_contrapartida"] = ""  # limpar campo
 
-# Mostrar contrapartidas já adicionadas com botões Editar / Remover
+# Listagem das contrapartidas
 if st.session_state.contrapartidas:
     st.write("📋 Contrapartidas adicionadas:")
     for i, c in enumerate(st.session_state.contrapartidas):
@@ -77,17 +71,29 @@ if st.session_state.contrapartidas:
                 st.session_state.contrapartidas.pop(i)
                 st.experimental_rerun()
 
-    # Modo edição (aparece somente quando se clica em editar)
+    # Modo edição
     if st.session_state.edit_index is not None:
         idx = st.session_state.edit_index
         if 0 <= idx < len(st.session_state.contrapartidas):
             st.info(f"✏️ Editando contrapartida {idx+1}")
-            edit_desc = st.text_input("Nova descrição", value=st.session_state.contrapartidas[idx]["descricao"], key="edit_desc")
-            edit_status = st.selectbox("Comprovada?", ["Sim", "Não"], index=0 if st.session_state.contrapartidas[idx]["status"] == "Sim" else 1, key="edit_status")
-            colSave, colCancel = st.columns([1,1])
+            edit_desc = st.text_input(
+                "Nova descrição",
+                value=st.session_state.contrapartidas[idx]["descricao"],
+                key="edit_desc"
+            )
+            edit_status = st.selectbox(
+                "Comprovada?",
+                ["Sim", "Não"],
+                index=0 if st.session_state.contrapartidas[idx]["status"] == "Sim" else 1,
+                key="edit_status"
+            )
+            colSave, colCancel = st.columns(2)
             with colSave:
                 if st.button("💾 Salvar Alterações"):
-                    st.session_state.contrapartidas[idx] = {"descricao": edit_desc, "status": edit_status}
+                    st.session_state.contrapartidas[idx] = {
+                        "descricao": edit_desc,
+                        "status": edit_status
+                    }
                     st.session_state.edit_index = None
                     st.experimental_rerun()
             with colCancel:
@@ -107,8 +113,7 @@ imagens = st.file_uploader(
     accept_multiple_files=True
 )
 
-# Checkbox para compactar imagens (opcional)
-compact_option = st.checkbox("Compactar imagens antes de inserir (reduz tamanho do arquivo)", value=True)
+compact_option = st.checkbox("Compactar imagens antes de inserir", value=True)
 
 # ========================
 # GERAR RELATÓRIO
@@ -133,7 +138,7 @@ if st.button("Gerar Relatório"):
                 "(DATA)": data_fmt
             }
 
-            # Substituir texto em parágrafos e tabelas
+            # Substituir em parágrafos e tabelas
             def substituir(doc, antigo, novo):
                 for p in doc.paragraphs:
                     if antigo in p.text:
@@ -153,9 +158,8 @@ if st.button("Gerar Relatório"):
             # ========================
             # CONTRAPARTIDAS NA TABELA
             # ========================
-            # Preenche marcadores existentes (contrapartida01, 02, 03 ...)
             if st.session_state.contrapartidas:
-                # Primeiro preenche os marcadores que já existem nas células
+                # Preencher marcadores existentes
                 for table in doc.tables:
                     for row in table.rows:
                         for cell in row.cells:
@@ -165,8 +169,96 @@ if st.button("Gerar Relatório"):
                                     if marcador in p.text:
                                         for run in p.runs:
                                             run.text = run.text.replace(marcador, c["descricao"])
-                                        # Preencher SIM / NÃO na mesma linha: substitui (XSIM)/(XNAO) nas runs dessa linha
+                                        # SIM / NÃO
                                         for rcell in row.cells:
                                             for rp in rcell.paragraphs:
                                                 for run in rp.runs:
                                                     if c["status"] == "Sim":
+                                                        run.text = run.text.replace("(XSIM)", "SIM").replace("(XNAO)", "")
+                                                    else:
+                                                        run.text = run.text.replace("(XNAO)", "NÃO").replace("(XSIM)", "")
+
+                # Se houver extras, duplicar última linha
+                max_default = 3
+                if len(st.session_state.contrapartidas) > max_default:
+                    for table in doc.tables:
+                        if any("(contrapartida01)" in c.text for r in table.rows for c in r.cells):
+                            template_row = table.rows[max_default]._tr
+                            for extra_idx, c in enumerate(st.session_state.contrapartidas[max_default:], start=max_default+1):
+                                new_tr = copy.deepcopy(template_row)
+                                table._tbl.append(new_tr)
+                                new_row = table.rows[-1]
+                                for cell in new_row.cells:
+                                    for p in cell.paragraphs:
+                                        if "(contrapartida03)" in p.text:
+                                            p.text = p.text.replace("(contrapartida03)", c["descricao"])
+                                        if c["status"] == "Sim":
+                                            p.text = p.text.replace("(XSIM)", "SIM").replace("(XNAO)", "")
+                                        else:
+                                            p.text = p.text.replace("(XNAO)", "NÃO").replace("(XSIM)", "")
+                            break
+
+            # ========================
+            # INSERIR IMAGENS
+            # ========================
+            for i, paragraph in enumerate(doc.paragraphs):
+                if "(FOTOS_ORGANIZADAS)" in paragraph.text:
+                    p_element = paragraph._element
+                    p_element.getparent().remove(p_element)
+
+                    if imagens:
+                        for idx, img in enumerate(imagens, 1):
+                            if compact_option:
+                                with Image.open(img) as im:
+                                    im = im.convert("RGB")
+                                    max_width = 1600
+                                    if im.width > max_width:
+                                        ratio = max_width / im.width
+                                        new_size = (max_width, int(im.height * ratio))
+                                        im = im.resize(new_size, Image.LANCZOS)
+                                    temp_path = f"temp_{idx}.jpg"
+                                    im.save(temp_path, "JPEG", optimize=True, quality=70)
+                            else:
+                                temp_path = f"temp_{idx}_{img.name}"
+                                with open(temp_path, "wb") as f:
+                                    f.write(img.getbuffer())
+
+                            if idx > 1:
+                                doc.add_page_break()
+
+                            p_img = doc.add_paragraph()
+                            p_img.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                            run_img = p_img.add_run()
+                            run_img.add_picture(temp_path, width=Inches(6))
+
+                            legenda = os.path.splitext(os.path.basename(img.name))[0]
+                            p_legenda = doc.add_paragraph()
+                            p_legenda.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                            run_legenda = p_legenda.add_run(f"Foto {idx}: {legenda}")
+                            run_legenda.font.name = "Calibri"
+                            run_legenda.font.size = Pt(10)
+                            run_legenda.bold = True
+
+                            try:
+                                os.remove(temp_path)
+                            except Exception:
+                                pass
+                    break
+
+            # ========================
+            # SALVAR DOCUMENTO
+            # ========================
+            output_path = "Relatorio_Gerado.docx"
+            doc.save(output_path)
+
+            with open(output_path, "rb") as f:
+                st.success("✅ Relatório gerado com sucesso!")
+                st.download_button(
+                    "⬇️ Baixar Relatório",
+                    f,
+                    file_name="Relatorio_Gerado.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+
+        except Exception as e:
+            st.error(f"❌ Erro ao gerar relatório: {e}")
