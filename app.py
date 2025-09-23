@@ -8,25 +8,16 @@ import datetime
 import copy
 
 # ---------------------------
-# Compatibilidade session_state
-# ---------------------------
-if not hasattr(st, "session_state") or st.session_state is None:
-    class _SimpleSession(dict):
-        def __getattr__(self, name): return self.get(name)
-        def __setattr__(self, name, value): self[name] = value
-    st.session_state = _SimpleSession()
-
-# Inicializações seguras
-if "contrapartidas" not in st.session_state:
-    st.session_state["contrapartidas"] = []
-if "edit_index" not in st.session_state:
-    st.session_state["edit_index"] = None
-
-# ---------------------------
-# Config
+# Config inicial
 # ---------------------------
 st.set_page_config(page_title="Gerador de Relatórios", layout="centered")
 st.title("📑 Gerador de Relatórios Automático")
+
+# Inicializações seguras
+if "contrapartidas" not in st.session_state:
+    st.session_state.contrapartidas = []
+if "edit_index" not in st.session_state:
+    st.session_state.edit_index = None
 
 # ========================
 # FORMULÁRIO PRINCIPAL
@@ -43,9 +34,9 @@ st.subheader("➕ Adicionar Contrapartida")
 
 col1, col2 = st.columns([3, 1])
 with col1:
-    nova_desc = st.text_input("Descrição da Contrapartida", key="desc_contrapartida")
+    nova_desc = st.text_input("Descrição da Contrapartida")
 with col2:
-    nova_status = st.selectbox("Comprovada?", ["Sim", "Não"], key="status_contrapartida")
+    nova_status = st.selectbox("Comprovada?", ["Sim", "Não"])
 
 if st.button("Adicionar Contrapartida"):
     if nova_desc:
@@ -54,7 +45,7 @@ if st.button("Adicionar Contrapartida"):
             "status": nova_status
         })
         st.success(f"Contrapartida adicionada: {nova_desc} ({nova_status})")
-        st.session_state["desc_contrapartida"] = ""  # limpar campo
+        st.experimental_rerun()   # 🔄 reinicia app para limpar campo
 
 # Listagem das contrapartidas
 if st.session_state.contrapartidas:
@@ -66,6 +57,7 @@ if st.session_state.contrapartidas:
         with colB:
             if st.button("✏️ Editar", key=f"edit_{i}"):
                 st.session_state.edit_index = i
+                st.experimental_rerun()
         with colC:
             if st.button("🗑 Remover", key=f"del_{i}"):
                 st.session_state.contrapartidas.pop(i)
@@ -78,14 +70,12 @@ if st.session_state.contrapartidas:
             st.info(f"✏️ Editando contrapartida {idx+1}")
             edit_desc = st.text_input(
                 "Nova descrição",
-                value=st.session_state.contrapartidas[idx]["descricao"],
-                key="edit_desc"
+                value=st.session_state.contrapartidas[idx]["descricao"]
             )
             edit_status = st.selectbox(
                 "Comprovada?",
                 ["Sim", "Não"],
-                index=0 if st.session_state.contrapartidas[idx]["status"] == "Sim" else 1,
-                key="edit_status"
+                index=0 if st.session_state.contrapartidas[idx]["status"] == "Sim" else 1
             )
             colSave, colCancel = st.columns(2)
             with colSave:
